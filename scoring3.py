@@ -123,7 +123,7 @@ def classify_resumes(resumes):
 
 # Function to call the OpenAI ChatGPT API with dynamic prompts
 def get_chatgpt_response(prompt):
-    api_key = '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'  # Add your API key here
+    api_key = '..............'  # Add your API key here
     openai.api_key = api_key
 
     response = openai.ChatCompletion.create(
@@ -137,61 +137,24 @@ def get_chatgpt_response(prompt):
     )
     return response.choices[0].message['content']
 
-# Function to generate questions and answers based on the comparison
-def generate_questions_and_answers(resume, job_offer):
-    questions_and_answers = []
+# Function to generate questions based on the comparison
+def generate_questions(resume, job_offer):
+    questions = [
+        "Does the candidate have the skills needed?",
+        "Does the candidate meet the educational requirements?",
+        "Does the candidate have the required years of experience?",
+        "What schools did the candidate study at?",
+        "What companies did the candidate work for?",
+        "How many years of experience does the candidate have?"
+    ]
 
-    # Check for skills
-    resume_skills = resume.get("OTHER", {}).get("skills", [])
-    job_skills = job_offer.get("Skills Needed", "").split(", ")
-    missing_skills = [skill for skill in job_skills if skill and skill not in resume_skills]
-    if missing_skills:
-        questions_and_answers.append({
-            "question": "Does the candidate have the skills needed?",
-            "answer": f"The candidate is missing the following skills: {', '.join(missing_skills)}."
-        })
-    else:
-        questions_and_answers.append({
-            "question": "Does the candidate have the skills needed?",
-            "answer": "The candidate has all the required skills."
-        })
+    return questions
 
-    # Check for education
-    required_education = job_offer.get("Education Required", "")
-    resume_education = [f"{edu.get('school_name', '')} ({edu.get('graduation_title', '')})" for edu in resume.get("EDUCATION", [])]
-    if required_education in resume_education:
-        questions_and_answers.append({
-            "question": "Does the candidate meet the educational requirements?",
-            "answer": "The candidate meets the educational requirements."
-        })
-    else:
-        questions_and_answers.append({
-            "question": "Does the candidate meet the educational requirements?",
-            "answer": f"The candidate does not meet the educational requirements. Required: {required_education}."
-        })
-
-    # Check for years of experience
-    experience_years = 0
-    for exp in resume.get("EXPERIENCE", []):
-        start_year = int(exp["Start date"].split()[-1])
-        end_year = 2024 if exp.get("Is_current", False) else int(exp["End date"].split()[-1])
-        experience_years += end_year - start_year
-    
-    required_experience = job_offer.get("Years of Experience", "0 years")
-    match = re.search(r'\d+', required_experience)
-    required_experience_years = int(match.group()) if match else 0
-    if experience_years >= required_experience_years:
-        questions_and_answers.append({
-            "question": "Does the candidate have the required years of experience?",
-            "answer": f"The candidate has {experience_years} years of experience, which meets the requirement."
-        })
-    else:
-        questions_and_answers.append({
-            "question": "Does the candidate have the required years of experience?",
-            "answer": f"The candidate has {experience_years} years of experience, which does not meet the {required_experience_years} years required."
-        })
-
-    return questions_and_answers
+# Function to generate answers for a selected question using ChatGPT
+def generate_answer(resume, job_offer, question):
+    prompt = f"Based on the resume and job offer below, {question}. Provide a short answer.\n\nJob Offer:\n{job_offer}\n\nResume:\n{resume}"
+    answer = get_chatgpt_response(prompt)
+    return answer
 
 # Function to get the resume by candidate name
 def get_resume_by_name(resumes, candidate_name):
@@ -199,6 +162,46 @@ def get_resume_by_name(resumes, candidate_name):
         if resume.get("CONTACT DETAILS", {}).get("FullName", "").lower() == candidate_name.lower():
             return resume
     return None
+
+# CSS for chat bubbles
+def chat_css():
+    st.markdown(
+        """
+        <style>
+        .chat-container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+            border-radius: 10px;
+            background-color: #f7f7f7;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .chat-bubble {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 25px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            line-height: 1.4;
+        }
+        .chat-bubble.user {
+            background-color: #0084ff;
+            color: white;
+            align-self: flex-end;
+        }
+        .chat-bubble.assistant {
+            background-color: #e4e6eb;
+            color: black;
+            align-self: flex-start;
+        }
+        .chat-header {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
 
 # Main Streamlit application
 def main():
@@ -245,6 +248,8 @@ def main():
         """,
         unsafe_allow_html=True
     )
+
+    chat_css()
 
     # Title of the dashboard
     st.markdown('<div class="section-title">Resume Scoring System</div>', unsafe_allow_html=True)
@@ -374,43 +379,49 @@ def main():
             resume = get_resume_by_name(resumes, candidate_name)
             if resume:
                 st.success(f"Resume for {candidate_name} found!")
-                questions_and_answers = generate_questions_and_answers(resume, job_offer_data)
+                questions = generate_questions(resume, job_offer_data)
             
                 if "chat_history" not in st.session_state:
                     st.session_state.chat_history = []
 
+                st.header("Chatbot")
                 chat_placeholder = st.empty()
 
                 with chat_placeholder.container():
+                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                     for i, chat in enumerate(st.session_state.chat_history):
                         if chat['role'] == 'user':
-                            st.markdown(f"**You:** {chat['content']}")
+                            st.markdown(f'<div class="chat-bubble user">**You:** {chat["content"]}</div>', unsafe_allow_html=True)
                         else:
-                            st.markdown(f"**Chatbot:** {chat['content']}")
+                            st.markdown(f'<div class="chat-bubble assistant">**Chatbot:** {chat["content"]}</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                selected_question = st.selectbox("Select a question to ask the chatbot:", [qa["question"] for qa in questions_and_answers])
+                selected_question = st.selectbox("Select a question to ask the chatbot:", questions)
                 if st.button("Ask"):
-                    answer = next(qa["answer"] for qa in questions_and_answers if qa["question"] == selected_question)
                     st.session_state.chat_history.append({"role": "user", "content": selected_question})
                     st.session_state.chat_history.append({"role": "assistant", "content": "..."})
 
                     chat_placeholder.empty()
                     with chat_placeholder.container():
+                        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                         for i, chat in enumerate(st.session_state.chat_history):
                             if chat['role'] == 'user':
-                                st.markdown(f"**You:** {chat['content']}")
+                                st.markdown(f'<div class="chat-bubble user">**You:** {chat["content"]}</div>', unsafe_allow_html=True)
                             else:
-                                st.markdown(f"**Chatbot:** {chat['content']}")
+                                st.markdown(f'<div class="chat-bubble assistant">**Chatbot:** {chat["content"]}</div>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
 
-                    time.sleep(1)  # Simulate thinking time
+                    answer = generate_answer(resume, job_offer_data, selected_question)
                     st.session_state.chat_history[-1] = {"role": "assistant", "content": answer}
                     chat_placeholder.empty()
                     with chat_placeholder.container():
+                        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                         for i, chat in enumerate(st.session_state.chat_history):
                             if chat['role'] == 'user':
-                                st.markdown(f"**You:** {chat['content']}")
+                                st.markdown(f'<div class="chat-bubble user">**You:** {chat["content"]}</div>', unsafe_allow_html=True)
                             else:
-                                st.markdown(f"**Chatbot:** {chat['content']}")
+                                st.markdown(f'<div class="chat-bubble assistant">**Chatbot:** {chat["content"]}</div>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.error(f"Resume for {candidate_name} not found.")
 
